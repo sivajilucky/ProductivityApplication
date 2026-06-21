@@ -1,7 +1,10 @@
 package com.oqlo.lifetracker.ui.permissions
 
+import android.content.ComponentName
 import android.content.Intent
 import android.provider.Settings
+import android.service.notification.NotificationListenerService
+import com.oqlo.lifetracker.service.TransactionNotificationListenerService
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,6 +43,13 @@ fun PermissionExplainerScreen(onContinue: () -> Unit) {
             context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }) { Text("Open Notification Access Settings") }
 
-        Button(onClick = onContinue) { Text("I've granted both — Continue") }
+        Button(onClick = {
+            // Toggling notification access in Settings doesn't always rebind an already-running
+            // app's listener service; force a fresh connection so capture starts immediately.
+            NotificationListenerService.requestRebind(
+                ComponentName(context, TransactionNotificationListenerService::class.java)
+            )
+            onContinue()
+        }) { Text("I've granted both — Continue") }
     }
 }

@@ -11,8 +11,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Savings
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -47,12 +49,14 @@ import java.util.Locale
 fun FinanceScreen(viewModel: FinanceViewModel = viewModel()) {
     val transactions by viewModel.allTransactions.collectAsState()
     val budgetGoal by viewModel.budgetGoal.collectAsState()
+    val needsReview by viewModel.needsReview.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var showGoalDialog by remember { mutableStateOf(false) }
 
     val thisMonth = remember(transactions) { viewModel.monthSummary(transactions, YearMonth.now()) }
     val lastMonth = remember(transactions) { viewModel.monthSummary(transactions, YearMonth.now().minusMonths(1)) }
     val expenseTrend = remember(transactions) { viewModel.weeklyExpenseTrend(transactions) }
+    val subscriptions = remember(transactions) { detectSubscriptions(transactions) }
 
     Scaffold(
         floatingActionButton = {
@@ -129,6 +133,18 @@ fun FinanceScreen(viewModel: FinanceViewModel = viewModel()) {
                 Button(onClick = { showGoalDialog = true }) { Text("Set budget / savings goal") }
             }
             item { InsightCard(thisMonth, lastMonth) }
+            if (subscriptions.isNotEmpty()) {
+                item { SubscriptionsCard(subscriptions) }
+            }
+            if (needsReview.isNotEmpty()) {
+                item { Text("Needs review", style = MaterialTheme.typography.titleMedium) }
+                items(needsReview) { transaction ->
+                    NeedsReviewRow(
+                        transaction,
+                        onResolve = { type, category -> viewModel.resolveReview(transaction, type, category) }
+                    )
+                }
+            }
             item { Text("Recent transactions", style = MaterialTheme.typography.titleMedium) }
             items(transactions.take(50)) { transaction ->
                 TransactionRow(transaction, onCategoryChange = { viewModel.confirmCategory(transaction, it) })
@@ -184,6 +200,71 @@ private fun InsightCard(thisMonth: MonthSummary, lastMonth: MonthSummary) {
                 insights.forEach { Text("• $it", modifier = Modifier.padding(top = 4.dp)) }
             }
         }
+    }
+}
+
+@Composable
+private fun SubscriptionsCard(subscriptions: List<SubscriptionInfo>) {
+    val monthlyTotal = subscriptions.sumOf { it.averageAmount }
+    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Autorenew, contentDescription = "Subscriptions", tint = Color(0xFF1565C0))
+                Text("Subscriptions", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 8.dp))
+            }
+            Text(
+                "Detected ${subscriptions.size} recurring charge${if (subscriptions.size == 1) "" else "s"} — ₹${"%.0f".format(monthlyTotal)}/month",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+            )
+            subscriptions.forEach {
+                Text("• ${it.merchant} — ₹${"%.0f".format(it.averageAmount)}/mo", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun NeedsReviewRow(transaction: TransactionEntity, onResolve: (TransactionType, String) -> Unit) {
+    var editing by remember { mutableStateOf(false) }
+    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.WarningAmber, contentDescription = "Needs review", tint = Color(0xFFEF6C00))
+                Column(modifier = Modifier.padding(start = 8.dp)) {
+                    Text(transaction.merchant, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "₹${"%.0f".format(transaction.amount)} — direction unclear, please confirm",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+            Button(onClick = { editing = true }, modifier = Modifier.padding(top = 4.dp)) { Text("Confirm") }
+        }
+    }
+    if (editing) {
+        var category by remember { mutableStateOf(transaction.category.takeIf { it != "Uncategorized" } ?: "") }
+        var isDebit by remember { mutableStateOf(transaction.type == TransactionType.DEBIT) }
+        AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text("Confirm transaction") },
+            text = {
+                Column {
+                    Row {
+                        Button(onClick = { isDebit = true }) { Text(if (isDebit) "● Debit" else "Debit") }
+                        Button(onClick = { isDebit = false }) { Text(if (!isDebit) "● Credit" else "Credit") }
+                    }
+                    OutlinedTextField(value = category, onValueChange = { category = it }, label = { Text("Category") })
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onResolve(if (isDebit) TransactionType.DEBIT else TransactionType.CREDIT, category)
+                    editing = false
+                }) { Text("Save") }
+            },
+            dismissButton = { Button(onClick = { editing = false }) { Text("Cancel") } }
+        )
     }
 }
 

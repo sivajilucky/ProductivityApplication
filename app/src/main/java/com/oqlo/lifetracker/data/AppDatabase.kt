@@ -26,7 +26,7 @@ import com.oqlo.lifetracker.data.screentime.ScreenTimeDao
         TaskEntity::class,
         RecurringTaskEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -45,7 +45,11 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "lifetracker.db"
-                ).build().also { instance = it }
+                )
+                    // No migrations are authored yet; the app is still pre-release, so a schema
+                    // bump just recreates the local cache rather than crashing on open.
+                    .fallbackToDestructiveMigration()
+                    .build().also { instance = it }
             }
     }
 }

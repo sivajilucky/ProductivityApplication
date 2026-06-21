@@ -25,6 +25,9 @@ interface FinanceDao {
     @Query("SELECT * FROM transactions WHERE category = 'Uncategorized' ORDER BY timestampMillis DESC")
     fun uncategorizedTransactions(): Flow<List<TransactionEntity>>
 
+    @Query("SELECT * FROM transactions WHERE needsReview = 1 ORDER BY timestampMillis DESC")
+    fun needsReviewTransactions(): Flow<List<TransactionEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertCategoryRule(rule: CategoryRuleEntity)
 

@@ -25,6 +25,10 @@ class FinanceViewModel(application: Application) : AppViewModel(application) {
         app.financeRepository.uncategorizedTransactions()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val needsReview: StateFlow<List<TransactionEntity>> =
+        app.financeRepository.needsReviewTransactions()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _budgetGoal = MutableStateFlow<BudgetGoalEntity?>(null)
     val budgetGoal: StateFlow<BudgetGoalEntity?> = _budgetGoal
 
@@ -53,6 +57,12 @@ class FinanceViewModel(application: Application) : AppViewModel(application) {
     fun confirmCategory(transaction: TransactionEntity, category: String) {
         viewModelScope.launch {
             app.financeRepository.confirmCategory(transaction, category)
+        }
+    }
+
+    fun resolveReview(transaction: TransactionEntity, type: TransactionType, category: String) {
+        viewModelScope.launch {
+            app.financeRepository.resolveReview(transaction, type, category.ifBlank { "Uncategorized" })
         }
     }
 
@@ -93,4 +103,31 @@ class FinanceViewModel(application: Application) : AppViewModel(application) {
 
 data class MonthSummary(val income: Double, val expense: Double, val expenseByCategory: Map<String, Double>) {
     val netSavings: Double get() = income - expense
+}
+
+data class SubscriptionInfo(val merchant: String, val averageAmount: Double, val occurrences: Int)
+
+/**
+ * Detects recurring monthly charges (subscriptions) by grouping debit transactions by merchant
+ * and checking for repeated, similarly-sized charges spaced roughly a month apart — surfaced so
+ * the user can see their total recurring spend without manually auditing every transaction.
+ */
+fun detectSubscriptions(transactions: List<TransactionEntity>): List<SubscriptionInfo> {
+    return transactions
+        .filter { it.type == TransactionType.DEBIT }
+        .groupBy { it.merchant.lowercase().trim() }
+        .mapNotNull { (merchant, txns) ->
+            if (txns.size < 2) return@mapNotNull null
+            val sorted = txns.sortedBy { it.timestampMillis }
+            val gapsInDays = sorted.zipWithNext { a, b ->
+                (b.timestampMillis - a.timestampMillis) / 86_400_000.0
+            }
+            val isMonthly = gapsInDays.all { it in 20.0..40.0 }
+            val avgAmount = sorted.sumOf { it.amount } / sorted.size
+            val isSimilarAmount = sorted.all { kotlin.math.abs(it.amount - avgAmount) / avgAmount <= 0.1 }
+            if (isMonthly && isSimilarAmount) {
+                SubscriptionInfo(sorted.first().merchant, avgAmount, sorted.size)
+            } else null
+        }
+        .sortedByDescending { it.averageAmount }
 }

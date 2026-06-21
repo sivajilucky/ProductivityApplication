@@ -15,7 +15,11 @@ data class TransactionEntity(
     val timestampMillis: Long,
     val source: String, // "notification" | "manual" | "sms"
     val rawText: String? = null,
-    val isCategoryConfirmed: Boolean = false
+    val isCategoryConfirmed: Boolean = false,
+    // True when a watched app posted a notification with a detected amount but the parser
+    // couldn't confidently tell credit from debit — surfaced in a "Needs review" queue instead
+    // of being silently dropped, so no money movement goes unrecorded.
+    val needsReview: Boolean = false
 )
 
 /** Learned/keyword based mapping used to auto-categorize future transactions. */

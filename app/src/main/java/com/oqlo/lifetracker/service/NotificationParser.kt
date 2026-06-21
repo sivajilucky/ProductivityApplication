@@ -5,7 +5,10 @@ import com.oqlo.lifetracker.data.finance.TransactionType
 data class ParsedTransaction(
     val amount: Double,
     val type: TransactionType,
-    val merchant: String
+    val merchant: String,
+    // True when an amount was detected but the wording didn't clearly indicate
+    // credit vs debit, so the type below is a best guess the user should confirm.
+    val needsReview: Boolean = false
 )
 
 /**
@@ -21,8 +24,15 @@ object NotificationParser {
     // "<name> sent you ₹500" or "<name> paid you ₹500" rather than "credited"/"received from <name>".
     // These phrases must be checked before the generic debit keywords below, since "paid"/"sent" alone
     // are ambiguous about direction ("you paid X" vs "X paid you").
-    private val creditPhrases = listOf("sent you", "paid you", "credited", "received", "deposited")
-    private val debitKeywords = listOf("debited", "spent", "paid", "withdrawn", "purchase of", "sent")
+    private val creditPhrases = listOf(
+        "sent you", "paid you", "credited", "received", "deposited", "credit alert",
+        "money received", "added to your account", "refund of", "cashback of"
+    )
+    private val debitKeywords = listOf(
+        "debited", "spent", "paid", "withdrawn", "purchase of", "sent", "payment of",
+        "transaction of", "transferred", "auto-debited", "auto debited", "txn of",
+        "debit alert", "payment successful", "paid to", "money sent"
+    )
 
     // Stop the merchant/sender capture at the first trailing connector word, punctuation, or digit
     // so "to SWIGGY via GPay on 20-06-26" yields "SWIGGY" rather than the whole tail of the string.
@@ -39,10 +49,19 @@ object NotificationParser {
         val amountMatch = amountRegex.find(combined) ?: return null
         val amount = amountMatch.groupValues[1].replace(",", "").toDoubleOrNull() ?: return null
 
-        val type = when {
-            creditPhrases.any { lower.contains(it) } -> TransactionType.CREDIT
-            debitKeywords.any { lower.contains(it) } -> TransactionType.DEBIT
-            else -> return null // not a transaction notification we recognize
+        val isCredit = creditPhrases.any { lower.contains(it) }
+        val isDebit = debitKeywords.any { lower.contains(it) }
+
+        // An amount was detected but neither direction keyword matched (e.g. unfamiliar bank
+        // phrasing). Rather than silently dropping the transaction, record a best guess of DEBIT
+        // (the more common case for spend-tracking apps) flagged for the user to confirm/correct.
+        val type: TransactionType
+        val needsReview: Boolean
+        when {
+            isCredit && !isDebit -> { type = TransactionType.CREDIT; needsReview = false }
+            isDebit && !isCredit -> { type = TransactionType.DEBIT; needsReview = false }
+            isCredit && isDebit -> { type = TransactionType.DEBIT; needsReview = true }
+            else -> { type = TransactionType.DEBIT; needsReview = true }
         }
 
         // Debits: prefer "to/at <merchant>"; credits: prefer "from <sender>" or "<name> sent/paid you".
@@ -60,6 +79,6 @@ object NotificationParser {
             ?: title.takeIf { it.isNotBlank() }
             ?: "Unknown"
 
-        return ParsedTransaction(amount, type, merchant)
+        return ParsedTransaction(amount, type, merchant, needsReview)
     }
 }

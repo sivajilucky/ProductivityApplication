@@ -21,9 +21,18 @@ class TransactionNotificationListenerService : NotificationListenerService() {
         "com.google.android.apps.nbu.paisa.user", // GPay
         "com.phonepe.app",
         "net.one97.paytm",
-        "com.csam.icici.bank.imobile",
-        "com.sbi.lotza.hdfcbank",
-        "com.snapwork.hdfc",
+        "com.csam.icici.bank.imobile", // ICICI iMobile
+        "com.snapwork.hdfc", // HDFC Bank MobileBanking
+        "com.sbi.SBIFreedomPlus", // SBI YONO/Freedom
+        "com.sbi.lotusintouch", // SBI Anywhere
+        "com.axis.mobile", // Axis Mobile
+        "com.msf.kbank.mobile", // Kotak Mobile Banking
+        "com.idfcfirstbank.optimus", // IDFC FIRST Bank
+        "in.org.npci.upiapp", // BHIM
+        "com.amazon.mShop.android.shopping", // Amazon Pay
+        "com.dreamplug.androidapp", // CRED
+        "com.mobikwik_new", // MobiKwik
+        "com.freecharge.android", // Freecharge
         "com.whatsapp", // WhatsApp Pay P2P transfers
         "com.whatsapp.w4b"
     )
@@ -49,7 +58,8 @@ class TransactionNotificationListenerService : NotificationListenerService() {
                     category = "Uncategorized",
                     timestampMillis = sbn.postTime,
                     source = "notification",
-                    rawText = "$title $text"
+                    rawText = "$title $text",
+                    needsReview = parsed.needsReview
                 )
             )
         }

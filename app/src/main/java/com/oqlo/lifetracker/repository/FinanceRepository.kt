@@ -4,6 +4,7 @@ import com.oqlo.lifetracker.data.finance.BudgetGoalEntity
 import com.oqlo.lifetracker.data.finance.CategoryRuleEntity
 import com.oqlo.lifetracker.data.finance.FinanceDao
 import com.oqlo.lifetracker.data.finance.TransactionEntity
+import com.oqlo.lifetracker.data.finance.TransactionType
 import kotlinx.coroutines.flow.Flow
 
 class FinanceRepository(private val dao: FinanceDao) {
@@ -14,6 +15,18 @@ class FinanceRepository(private val dao: FinanceDao) {
         dao.transactionsBetween(start, end)
 
     fun uncategorizedTransactions(): Flow<List<TransactionEntity>> = dao.uncategorizedTransactions()
+
+    fun needsReviewTransactions(): Flow<List<TransactionEntity>> = dao.needsReviewTransactions()
+
+    /** User confirms/corrects an auto-captured transaction that the parser couldn't classify confidently. */
+    suspend fun resolveReview(transaction: TransactionEntity, type: TransactionType, category: String) {
+        dao.updateTransaction(
+            transaction.copy(type = type, category = category, isCategoryConfirmed = true, needsReview = false)
+        )
+        val keyword = transaction.merchant.lowercase().split(" ").firstOrNull { it.length > 2 }
+            ?: transaction.merchant.lowercase()
+        dao.upsertCategoryRule(CategoryRuleEntity(keyword, category))
+    }
 
     /** Looks up a learned category rule by merchant keyword, falling back to "Uncategorized". */
     suspend fun categorize(merchant: String): String {
