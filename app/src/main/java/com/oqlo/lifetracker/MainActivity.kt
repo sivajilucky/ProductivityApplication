@@ -26,6 +26,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         WorkScheduler.scheduleScreenTimeSync(this)
+        WorkScheduler.runImmediateScreenTimeSync(this)
         WorkScheduler.scheduleDailyReminder(this)
 
         val deepLink = intent.getStringExtra(EXTRA_DEEPLINK)
@@ -43,6 +44,9 @@ class MainActivity : ComponentActivity() {
                         onContinue = {
                             permissionsGranted.value =
                                 PermissionUtils.hasUsageAccess(this) && PermissionUtils.hasNotificationAccess(this)
+                            if (permissionsGranted.value) {
+                                WorkScheduler.runImmediateScreenTimeSync(this)
+                            }
                         }
                     )
                 } else {

@@ -64,6 +64,19 @@ class FinanceViewModel(application: Application) : AppViewModel(application) {
         }
     }
 
+    /** Net expense per day for the last 7 days (today inclusive), oldest first — for trend charts. */
+    fun weeklyExpenseTrend(transactions: List<TransactionEntity>): List<Pair<LocalDate, Double>> {
+        val today = LocalDate.now()
+        return (6 downTo 0).map { offset ->
+            val day = today.minusDays(offset.toLong())
+            val total = transactions.filter {
+                it.type == TransactionType.DEBIT &&
+                    LocalDate.ofEpochDay(it.timestampMillis / 86_400_000L) == day
+            }.sumOf { it.amount }
+            day to total
+        }
+    }
+
     fun monthSummary(transactions: List<TransactionEntity>, yearMonth: YearMonth): MonthSummary {
         val filtered = transactions.filter {
             val date = LocalDate.ofEpochDay(it.timestampMillis / 86_400_000L)

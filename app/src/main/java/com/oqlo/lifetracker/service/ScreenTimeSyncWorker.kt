@@ -27,7 +27,10 @@ class ScreenTimeSyncWorker(
         val start = DateUtils.startOfDayMillis(today)
         val end = System.currentTimeMillis()
 
-        val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
+        // INTERVAL_DAILY aligns to fixed daily buckets and often returns empty/stale results for a
+        // partial "start of today to now" range. INTERVAL_BEST picks the bucket granularity that
+        // best fits the requested range without losing data, which is what we want here.
+        val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_BEST, start, end)
         if (stats.isNullOrEmpty()) return Result.success()
 
         val entries = stats

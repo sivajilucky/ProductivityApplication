@@ -23,7 +23,9 @@ class TransactionNotificationListenerService : NotificationListenerService() {
         "net.one97.paytm",
         "com.csam.icici.bank.imobile",
         "com.sbi.lotza.hdfcbank",
-        "com.snapwork.hdfc"
+        "com.snapwork.hdfc",
+        "com.whatsapp", // WhatsApp Pay P2P transfers
+        "com.whatsapp.w4b"
     )
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {

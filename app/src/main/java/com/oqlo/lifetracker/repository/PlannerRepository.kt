@@ -9,6 +9,8 @@ class PlannerRepository(private val dao: PlannerDao) {
 
     fun tasksForDay(day: Long): Flow<List<TaskEntity>> = dao.tasksForDay(day)
 
+    fun tasksBetween(fromDay: Long, toDay: Long): Flow<List<TaskEntity>> = dao.tasksBetween(fromDay, toDay)
+
     suspend fun addTask(task: TaskEntity): Long {
         val id = dao.insertTask(task)
         val existing = dao.findRecurringByTitle(task.title)

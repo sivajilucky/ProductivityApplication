@@ -19,6 +19,9 @@ interface PlannerDao {
     @Query("SELECT * FROM tasks WHERE dateEpochDay = :day ORDER BY timeSlot IS NULL, timeSlot ASC")
     fun tasksForDay(day: Long): Flow<List<TaskEntity>>
 
+    @Query("SELECT * FROM tasks WHERE dateEpochDay BETWEEN :fromDay AND :toDay")
+    fun tasksBetween(fromDay: Long, toDay: Long): Flow<List<TaskEntity>>
+
     @Query("SELECT * FROM tasks WHERE dateEpochDay = :day AND isDone = 0")
     suspend fun pendingTasksForDay(day: Long): List<TaskEntity>
 
