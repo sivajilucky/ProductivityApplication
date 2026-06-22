@@ -10,8 +10,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Savings
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -25,22 +32,31 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oqlo.lifetracker.data.finance.TransactionEntity
 import com.oqlo.lifetracker.data.finance.TransactionType
+import com.oqlo.lifetracker.ui.common.AnimatedTrendChart
+import com.oqlo.lifetracker.ui.common.BarData
+import java.time.format.TextStyle
 import java.time.YearMonth
+import java.util.Locale
 
 @Composable
 fun FinanceScreen(viewModel: FinanceViewModel = viewModel()) {
     val transactions by viewModel.allTransactions.collectAsState()
     val budgetGoal by viewModel.budgetGoal.collectAsState()
+    val needsReview by viewModel.needsReview.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var showGoalDialog by remember { mutableStateOf(false) }
 
     val thisMonth = remember(transactions) { viewModel.monthSummary(transactions, YearMonth.now()) }
     val lastMonth = remember(transactions) { viewModel.monthSummary(transactions, YearMonth.now().minusMonths(1)) }
+    val expenseTrend = remember(transactions) { viewModel.weeklyExpenseTrend(transactions) }
+    val subscriptions = remember(transactions) { detectSubscriptions(transactions) }
 
     Scaffold(
         floatingActionButton = {
@@ -49,24 +65,86 @@ fun FinanceScreen(viewModel: FinanceViewModel = viewModel()) {
             }
         }
     ) { padding ->
-        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item {
                 Text("Finance", style = MaterialTheme.typography.headlineSmall)
-                Text("Income: ₹${"%.0f".format(thisMonth.income)}   Expense: ₹${"%.0f".format(thisMonth.expense)}")
-                Text("Net savings: ₹${"%.0f".format(thisMonth.netSavings)}", style = MaterialTheme.typography.titleMedium)
+            }
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.AccountBalanceWallet, contentDescription = "Finance", tint = Color(0xFF2E7D32))
+                            Text("This Month", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 8.dp))
+                        }
+                        Text(
+                            "Income ₹${"%.0f".format(thisMonth.income)}  /  Expense ₹${"%.0f".format(thisMonth.expense)}",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                        Text(
+                            "Net savings: ₹${"%.0f".format(thisMonth.netSavings)}",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                        )
+                        if (expenseTrend.any { it.second > 0.0 }) {
+                            Text("Last 7 days spend", style = MaterialTheme.typography.labelSmall)
+                            AnimatedTrendChart(
+                                data = expenseTrend.map { (day, value) ->
+                                    BarData(
+                                        day.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).take(2),
+                                        value.toFloat(),
+                                        Color(0xFFD32F2F)
+                                    )
+                                },
+                                barHeight = 70.dp,
+                                valueLabel = { "₹${it.toInt()}" }
+                            )
+                        }
+                    }
+                }
             }
             budgetGoal?.let { goal ->
                 item {
-                    Text("Savings goal: ₹${"%.0f".format(goal.monthlySavingsGoal)}")
-                    val progress = if (goal.monthlySavingsGoal > 0)
-                        (thisMonth.netSavings / goal.monthlySavingsGoal).toFloat().coerceIn(0f, 1f) else 0f
-                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Savings, contentDescription = "Savings goal", tint = Color(0xFF6750A4))
+                                Text(
+                                    "Savings goal: ₹${"%.0f".format(goal.monthlySavingsGoal)}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
+                            val progress = if (goal.monthlySavingsGoal > 0)
+                                (thisMonth.netSavings / goal.monthlySavingsGoal).toFloat().coerceIn(0f, 1f) else 0f
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                            )
+                        }
+                    }
                 }
             }
             item {
                 Button(onClick = { showGoalDialog = true }) { Text("Set budget / savings goal") }
             }
             item { InsightCard(thisMonth, lastMonth) }
+            if (subscriptions.isNotEmpty()) {
+                item { SubscriptionsCard(subscriptions) }
+            }
+            if (needsReview.isNotEmpty()) {
+                item { Text("Needs review", style = MaterialTheme.typography.titleMedium) }
+                items(needsReview) { transaction ->
+                    NeedsReviewRow(
+                        transaction,
+                        onResolve = { type, category -> viewModel.resolveReview(transaction, type, category) }
+                    )
+                }
+            }
             item { Text("Recent transactions", style = MaterialTheme.typography.titleMedium) }
             items(transactions.take(50)) { transaction ->
                 TransactionRow(transaction, onCategoryChange = { viewModel.confirmCategory(transaction, it) })
@@ -113,27 +191,103 @@ private fun InsightCard(thisMonth: MonthSummary, lastMonth: MonthSummary) {
     }
 
     if (insights.isNotEmpty()) {
-        Column {
-            Text("Insights", style = MaterialTheme.typography.titleMedium)
-            insights.forEach { Text("• $it") }
+        Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Lightbulb, contentDescription = "Insights", tint = Color(0xFFEF6C00))
+                    Text("Insights", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 8.dp))
+                }
+                insights.forEach { Text("• $it", modifier = Modifier.padding(top = 4.dp)) }
+            }
         }
+    }
+}
+
+@Composable
+private fun SubscriptionsCard(subscriptions: List<SubscriptionInfo>) {
+    val monthlyTotal = subscriptions.sumOf { it.averageAmount }
+    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Autorenew, contentDescription = "Subscriptions", tint = Color(0xFF1565C0))
+                Text("Subscriptions", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 8.dp))
+            }
+            Text(
+                "Detected ${subscriptions.size} recurring charge${if (subscriptions.size == 1) "" else "s"} — ₹${"%.0f".format(monthlyTotal)}/month",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+            )
+            subscriptions.forEach {
+                Text("• ${it.merchant} — ₹${"%.0f".format(it.averageAmount)}/mo", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun NeedsReviewRow(transaction: TransactionEntity, onResolve: (TransactionType, String) -> Unit) {
+    var editing by remember { mutableStateOf(false) }
+    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.WarningAmber, contentDescription = "Needs review", tint = Color(0xFFEF6C00))
+                Column(modifier = Modifier.padding(start = 8.dp)) {
+                    Text(transaction.merchant, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "₹${"%.0f".format(transaction.amount)} — direction unclear, please confirm",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+            Button(onClick = { editing = true }, modifier = Modifier.padding(top = 4.dp)) { Text("Confirm") }
+        }
+    }
+    if (editing) {
+        var category by remember { mutableStateOf(transaction.category.takeIf { it != "Uncategorized" } ?: "") }
+        var isDebit by remember { mutableStateOf(transaction.type == TransactionType.DEBIT) }
+        AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text("Confirm transaction") },
+            text = {
+                Column {
+                    Row {
+                        Button(onClick = { isDebit = true }) { Text(if (isDebit) "● Debit" else "Debit") }
+                        Button(onClick = { isDebit = false }) { Text(if (!isDebit) "● Credit" else "Credit") }
+                    }
+                    OutlinedTextField(value = category, onValueChange = { category = it }, label = { Text("Category") })
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onResolve(if (isDebit) TransactionType.DEBIT else TransactionType.CREDIT, category)
+                    editing = false
+                }) { Text("Save") }
+            },
+            dismissButton = { Button(onClick = { editing = false }) { Text("Cancel") } }
+        )
     }
 }
 
 @Composable
 private fun TransactionRow(transaction: TransactionEntity, onCategoryChange: (String) -> Unit) {
     var editing by remember { mutableStateOf(false) }
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Column {
-            Text(transaction.merchant)
-            Text(transaction.category, style = MaterialTheme.typography.bodySmall)
+    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text(transaction.merchant, style = MaterialTheme.typography.bodyLarge)
+                    Text(transaction.category, style = MaterialTheme.typography.bodySmall)
+                }
+                Text(
+                    (if (transaction.type == TransactionType.DEBIT) "-₹" else "+₹") + "%.0f".format(transaction.amount),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (transaction.type == TransactionType.DEBIT) Color(0xFFD32F2F) else Color(0xFF2E7D32)
+                )
+            }
+            if (transaction.category == "Uncategorized") {
+                Button(onClick = { editing = true }, modifier = Modifier.padding(top = 4.dp)) { Text("Fix category") }
+            }
         }
-        Text(
-            (if (transaction.type == TransactionType.DEBIT) "-₹" else "+₹") + "%.0f".format(transaction.amount)
-        )
-    }
-    if (transaction.category == "Uncategorized") {
-        Button(onClick = { editing = true }) { Text("Fix category") }
     }
     if (editing) {
         var text by remember { mutableStateOf("") }

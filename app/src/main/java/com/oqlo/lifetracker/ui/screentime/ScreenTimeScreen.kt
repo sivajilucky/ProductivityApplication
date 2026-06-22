@@ -11,6 +11,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -23,12 +26,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.oqlo.lifetracker.data.screentime.AppUsageCategory
+import com.oqlo.lifetracker.ui.common.AnimatedTrendChart
 import com.oqlo.lifetracker.ui.common.BarData
-import com.oqlo.lifetracker.ui.common.SimpleBarChart
 import androidx.compose.ui.graphics.Color
 import java.time.LocalDate
 import java.util.concurrent.TimeUnit
@@ -52,18 +56,37 @@ fun ScreenTimeScreen(viewModel: ScreenTimeViewModel = viewModel()) {
         }
     }
 
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Text("Screen Time", style = MaterialTheme.typography.headlineSmall)
-            Text("Total today: ${formatMillis(totalMillis)}")
-            Text(
-                "Time wasted: ${formatMillis(wastedMillis)} (${if (totalMillis > 0) wastedMillis * 100 / totalMillis else 0}%)",
-                color = MaterialTheme.colorScheme.error
-            )
         }
         item {
-            Text("Last 7 days (minutes)", style = MaterialTheme.typography.titleMedium)
-            SimpleBarChart(weekBars, modifier = Modifier.fillMaxWidth())
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.PhoneAndroid, contentDescription = "Screen Time", tint = Color(0xFF6750A4))
+                        Text("Today", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 8.dp))
+                    }
+                    Text("Total: ${formatMillis(totalMillis)}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 4.dp))
+                    Text(
+                        "Time wasted: ${formatMillis(wastedMillis)} (${if (totalMillis > 0) wastedMillis * 100 / totalMillis else 0}%)",
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                    )
+                    if (weekBars.any { it.value > 0f }) {
+                        Text("Last 7 days", style = MaterialTheme.typography.labelSmall)
+                        AnimatedTrendChart(
+                            data = weekBars,
+                            barHeight = 70.dp,
+                            valueLabel = { "${it.toInt()}m" }
+                        )
+                    }
+                }
+            }
         }
         item { Text("Today's breakdown", style = MaterialTheme.typography.titleMedium) }
         items(todayRows) { row ->
@@ -76,25 +99,31 @@ fun ScreenTimeScreen(viewModel: ScreenTimeViewModel = viewModel()) {
 private fun UsageRowItem(row: UsageRow, onCategoryChange: (AppUsageCategory) -> Unit) {
     var menuExpanded by remember { mutableStateOf(false) }
 
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Column {
-            Text(row.usage.appLabel, style = MaterialTheme.typography.bodyLarge)
-            Text(formatMillis(row.usage.usageMillis), style = MaterialTheme.typography.bodySmall)
-        }
-        Row {
-            Text(row.category.name.replace("_", " "), style = MaterialTheme.typography.labelMedium)
-            IconButton(onClick = { menuExpanded = true }) {
-                Icon(Icons.Filled.ArrowDropDown, contentDescription = "Set category")
+    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(row.usage.appLabel, style = MaterialTheme.typography.bodyLarge)
+                Text(formatMillis(row.usage.usageMillis), style = MaterialTheme.typography.bodySmall)
             }
-            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                AppUsageCategory.values().forEach { category ->
-                    DropdownMenuItem(
-                        text = { Text(category.name.replace("_", " ")) },
-                        onClick = {
-                            onCategoryChange(category)
-                            menuExpanded = false
-                        }
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(row.category.name.replace("_", " "), style = MaterialTheme.typography.labelMedium)
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Filled.ArrowDropDown, contentDescription = "Set category")
+                }
+                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    AppUsageCategory.values().forEach { category ->
+                        DropdownMenuItem(
+                            text = { Text(category.name.replace("_", " ")) },
+                            onClick = {
+                                onCategoryChange(category)
+                                menuExpanded = false
+                            }
+                        )
+                    }
                 }
             }
         }

@@ -17,7 +17,10 @@ data class DashboardSnapshot(
     val todayExpense: Double,
     val todayIncome: Double,
     val tasksCompleted: Int,
-    val tasksTotal: Int
+    val tasksTotal: Int,
+    val screenTimeTrend: List<Pair<LocalDate, Float>> = emptyList(),
+    val expenseTrend: List<Pair<LocalDate, Float>> = emptyList(),
+    val taskCompletionTrend: List<Pair<LocalDate, Float>> = emptyList()
 )
 
 class DashboardViewModel(application: Application) : AppViewModel(application) {
@@ -25,19 +28,47 @@ class DashboardViewModel(application: Application) : AppViewModel(application) {
     private val today = DateUtils.todayEpochDay()
 
     val snapshot = combine(
-        app.screenTimeRepository.usageForDay(today),
+        app.screenTimeRepository.usageBetween(today - 6, today),
         app.financeRepository.allTransactions(),
-        app.plannerRepository.tasksForDay(today)
-    ) { usage: List<AppUsageEntity>, transactions, tasks: List<TaskEntity> ->
+        app.plannerRepository.tasksBetween(today - 6, today)
+    ) { weekUsage: List<AppUsageEntity>, transactions, weekTasks: List<TaskEntity> ->
         val todayTransactions = transactions.filter {
             LocalDate.ofEpochDay(it.timestampMillis / 86_400_000L).toEpochDay() == today
         }
+        val todayUsage = weekUsage.filter { it.dateEpochDay == today }
+        val todayTasks = weekTasks.filter { it.dateEpochDay == today }
+        val todayDate = LocalDate.now()
+
+        val screenTimeTrend = (6 downTo 0).map { offset ->
+            val day = todayDate.minusDays(offset.toLong())
+            val minutes = weekUsage.filter { it.dateEpochDay == day.toEpochDay() }
+                .sumOf { it.usageMillis } / 60000f
+            day to minutes
+        }
+        val expenseTrend = (6 downTo 0).map { offset ->
+            val day = todayDate.minusDays(offset.toLong())
+            val expense = transactions.filter {
+                it.type == TransactionType.DEBIT &&
+                    LocalDate.ofEpochDay(it.timestampMillis / 86_400_000L) == day
+            }.sumOf { it.amount }.toFloat()
+            day to expense
+        }
+        val taskCompletionTrend = (6 downTo 0).map { offset ->
+            val day = todayDate.minusDays(offset.toLong())
+            val dayTasks = weekTasks.filter { it.dateEpochDay == day.toEpochDay() }
+            val pct = if (dayTasks.isNotEmpty()) dayTasks.count { it.isDone } * 100f / dayTasks.size else 0f
+            day to pct
+        }
+
         DashboardSnapshot(
-            totalScreenTimeMillis = usage.sumOf { it.usageMillis },
+            totalScreenTimeMillis = todayUsage.sumOf { it.usageMillis },
             todayExpense = todayTransactions.filter { it.type == TransactionType.DEBIT }.sumOf { it.amount },
             todayIncome = todayTransactions.filter { it.type == TransactionType.CREDIT }.sumOf { it.amount },
-            tasksCompleted = tasks.count { it.isDone },
-            tasksTotal = tasks.size
+            tasksCompleted = todayTasks.count { it.isDone },
+            tasksTotal = todayTasks.size,
+            screenTimeTrend = screenTimeTrend,
+            expenseTrend = expenseTrend,
+            taskCompletionTrend = taskCompletionTrend
         )
     }.stateIn(
         viewModelScope, SharingStarted.WhileSubscribed(5000),
