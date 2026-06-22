@@ -26,7 +26,7 @@ import com.oqlo.lifetracker.data.screentime.ScreenTimeDao
         TaskEntity::class,
         RecurringTaskEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

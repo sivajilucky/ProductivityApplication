@@ -34,6 +34,11 @@ object NotificationParser {
         "debit alert", "payment successful", "paid to", "money sent"
     )
 
+    // Narrow phrase set for chat apps (WhatsApp) — combined with the mandatory "upi" check in
+    // parse(), this avoids treating ordinary conversation about money as a real transaction.
+    private val p2pCreditPhrases = listOf("sent you", "paid you", "received")
+    private val p2pDebitPhrases = listOf("you paid", "you sent", "payment of")
+
     // Stop the merchant/sender capture at the first trailing connector word, punctuation, or digit
     // so "to SWIGGY via GPay on 20-06-26" yields "SWIGGY" rather than the whole tail of the string.
     private val stopWord = """(?=\s+(?:via|on|using|from|to|at|a\/c|acc(?:ount)?)\b|[.,]|\d|$)"""
@@ -42,12 +47,31 @@ object NotificationParser {
     private val senderSentYouRegex = Regex("""([A-Za-z][A-Za-z0-9 &_-]{1,29}?)\s+(?:sent|paid)\s+you""", RegexOption.IGNORE_CASE)
     private val viaRegex = Regex("""via\s+([A-Za-z][A-Za-z0-9 &_-]{1,29}?)$stopWord""", RegexOption.IGNORE_CASE)
 
-    fun parse(title: String, text: String): ParsedTransaction? {
+    fun parse(title: String, text: String, isP2PMessagingApp: Boolean = false): ParsedTransaction? {
         val combined = "$title $text"
         val lower = combined.lowercase()
 
         val amountMatch = amountRegex.find(combined) ?: return null
         val amount = amountMatch.groupValues[1].replace(",", "").toDoubleOrNull() ?: return null
+
+        // WhatsApp/messaging apps post a notification for every chat message, and ordinary
+        // conversation ("send me rs 500 tomorrow", forwarded price lists) frequently mentions
+        // money without being an actual payment. Only trust these as transactions when the text
+        // contains an explicit UPI payment confirmation phrase; never fall back to a best guess,
+        // since a false positive here is pure noise rather than a recoverable missed transaction.
+        if (isP2PMessagingApp) {
+            if (!lower.contains("upi")) return null
+            val type = when {
+                p2pCreditPhrases.any { lower.contains(it) } -> TransactionType.CREDIT
+                p2pDebitPhrases.any { lower.contains(it) } -> TransactionType.DEBIT
+                else -> return null
+            }
+            val merchant = creditSenderRegex.find(combined)?.groupValues?.get(1)?.trim()
+                ?: senderSentYouRegex.find(text)?.groupValues?.get(1)?.trim()
+                ?: title.takeIf { it.isNotBlank() }
+                ?: "Unknown"
+            return ParsedTransaction(amount, type, merchant, needsReview = false)
+        }
 
         val isCredit = creditPhrases.any { lower.contains(it) }
         val isDebit = debitKeywords.any { lower.contains(it) }

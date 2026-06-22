@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.viewModelScope
 import com.oqlo.lifetracker.data.planner.TaskEntity
 import com.oqlo.lifetracker.data.planner.TaskPriority
+import com.oqlo.lifetracker.service.TaskReminderScheduler
 import com.oqlo.lifetracker.ui.common.AppViewModel
 import com.oqlo.lifetracker.util.DateUtils
 import kotlinx.coroutines.flow.SharingStarted
@@ -41,18 +42,20 @@ class PlannerViewModel(application: Application) : AppViewModel(application) {
         }
     }
 
-    fun addTask(title: String, category: String, priority: TaskPriority, timeSlot: String?) {
+    fun addTask(title: String, category: String, priority: TaskPriority, timeSlot: String?, reminderEnabled: Boolean = false) {
         if (title.isBlank()) return
         viewModelScope.launch {
-            app.plannerRepository.addTask(
+            val saved = app.plannerRepository.addTask(
                 TaskEntity(
                     title = title,
                     category = category.ifBlank { "General" },
                     priority = priority,
                     dateEpochDay = today,
-                    timeSlot = timeSlot?.takeIf { it.isNotBlank() }
+                    timeSlot = timeSlot?.takeIf { it.isNotBlank() },
+                    reminderEnabled = reminderEnabled
                 )
             )
+            TaskReminderScheduler.schedule(getApplication(), saved)
         }
     }
 

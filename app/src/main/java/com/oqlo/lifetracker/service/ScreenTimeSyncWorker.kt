@@ -1,5 +1,6 @@
 package com.oqlo.lifetracker.service
 
+import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -10,8 +11,8 @@ import com.oqlo.lifetracker.data.screentime.AppUsageEntity
 import com.oqlo.lifetracker.util.DateUtils
 
 /**
- * Pulls aggregated per-app foreground usage for today from UsageStatsManager
- * and upserts it into Room. No manual input required; intended to run periodically.
+ * Pulls per-app foreground usage for today from UsageStatsManager and upserts it into Room.
+ * No manual input required; intended to run periodically.
  */
 class ScreenTimeSyncWorker(
     context: Context,
@@ -27,22 +28,48 @@ class ScreenTimeSyncWorker(
         val start = DateUtils.startOfDayMillis(today)
         val end = System.currentTimeMillis()
 
-        // INTERVAL_DAILY aligns to fixed daily buckets and often returns empty/stale results for a
-        // partial "start of today to now" range. INTERVAL_BEST picks the bucket granularity that
-        // best fits the requested range without losing data, which is what we want here.
-        val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_BEST, start, end)
-        if (stats.isNullOrEmpty()) return Result.success()
+        // queryUsageStats(INTERVAL_BEST) reports totalTimeInForeground per bucket, and buckets can
+        // overlap the requested range in ways that double-count time — it's known to inflate
+        // numbers well above what Android's own Digital Wellbeing screen shows. Walking the raw
+        // MOVE_TO_FOREGROUND/MOVE_TO_BACKGROUND event stream and summing only the foreground spans
+        // that actually fall within [start, end] gives an exact total instead.
+        val usageMillisByPackage = mutableMapOf<String, Long>()
+        val foregroundSince = mutableMapOf<String, Long>()
+        val events = usageStatsManager.queryEvents(start, end)
+        val event = UsageEvents.Event()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            when (event.eventType) {
+                UsageEvents.Event.MOVE_TO_FOREGROUND ->
+                    foregroundSince[event.packageName] = event.timeStamp
+                UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                    val since = foregroundSince.remove(event.packageName)
+                    if (since != null) {
+                        val duration = (event.timeStamp - since).coerceAtLeast(0)
+                        usageMillisByPackage[event.packageName] =
+                            (usageMillisByPackage[event.packageName] ?: 0) + duration
+                    }
+                }
+            }
+        }
+        // Any app still in the foreground when the query window ends (e.g. this app right now)
+        // contributes the time up to `end` rather than being dropped.
+        foregroundSince.forEach { (pkg, since) ->
+            val duration = (end - since).coerceAtLeast(0)
+            usageMillisByPackage[pkg] = (usageMillisByPackage[pkg] ?: 0) + duration
+        }
 
-        val entries = stats
-            .filter { it.totalTimeInForeground > 0 }
-            .map { stat ->
+        val entries = usageMillisByPackage
+            .filter { it.value > 0 }
+            .map { (packageName, millis) ->
                 AppUsageEntity(
-                    packageName = stat.packageName,
+                    packageName = packageName,
                     dateEpochDay = today,
-                    appLabel = labelFor(pm, stat.packageName),
-                    usageMillis = stat.totalTimeInForeground
+                    appLabel = labelFor(pm, packageName),
+                    usageMillis = millis
                 )
             }
+        if (entries.isEmpty()) return Result.success()
 
         app.database.screenTimeDao().upsertUsageAll(entries)
         return Result.success()

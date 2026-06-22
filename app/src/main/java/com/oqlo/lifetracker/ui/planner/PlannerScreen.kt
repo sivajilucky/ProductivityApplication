@@ -109,8 +109,8 @@ fun PlannerScreen(viewModel: PlannerViewModel = viewModel(), openAddTaskOnStart:
     if (showAddDialog) {
         AddTaskDialog(
             onDismiss = { showAddDialog = false },
-            onSave = { title, category, priority, timeSlot ->
-                viewModel.addTask(title, category, priority, timeSlot)
+            onSave = { title, category, priority, timeSlot, reminderEnabled ->
+                viewModel.addTask(title, category, priority, timeSlot, reminderEnabled)
                 showAddDialog = false
             }
         )
@@ -143,12 +143,13 @@ private fun TaskRow(task: TaskEntity, onToggle: () -> Unit) {
 @Composable
 private fun AddTaskDialog(
     onDismiss: () -> Unit,
-    onSave: (String, String, TaskPriority, String?) -> Unit
+    onSave: (String, String, TaskPriority, String?, Boolean) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
     var timeSlot by remember { mutableStateOf("") }
     var priority by remember { mutableStateOf(TaskPriority.MEDIUM) }
+    var reminderEnabled by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -163,10 +164,14 @@ private fun AddTaskDialog(
                         Button(onClick = { priority = p }) { Text(if (priority == p) "● ${p.name}" else p.name) }
                     }
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = reminderEnabled, onCheckedChange = { reminderEnabled = it })
+                    Text("Remind me")
+                }
             }
         },
         confirmButton = {
-            Button(onClick = { onSave(title, category, priority, timeSlot) }) { Text("Save") }
+            Button(onClick = { onSave(title, category, priority, timeSlot, reminderEnabled) }) { Text("Save") }
         },
         dismissButton = { Button(onClick = onDismiss) { Text("Cancel") } }
     )

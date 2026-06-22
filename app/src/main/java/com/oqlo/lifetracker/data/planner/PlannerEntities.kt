@@ -14,7 +14,9 @@ data class TaskEntity(
     val dateEpochDay: Long,
     val timeSlot: String? = null, // "HH:mm" optional
     val isDone: Boolean = false,
-    val recurringTemplateId: Long? = null
+    val recurringTemplateId: Long? = null,
+    // Only meaningful when timeSlot is set — schedules an exact-time system notification.
+    val reminderEnabled: Boolean = false
 )
 
 /** A recurring template (e.g. "Gym at 6 AM") auto-prefilled each morning. */

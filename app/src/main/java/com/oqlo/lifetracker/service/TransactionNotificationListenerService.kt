@@ -37,6 +37,10 @@ class TransactionNotificationListenerService : NotificationListenerService() {
         "com.whatsapp.w4b"
     )
 
+    // WhatsApp posts a notification for every chat message, not just payments, so it needs the
+    // stricter "must explicitly mention UPI" parsing path — see NotificationParser.parse.
+    private val p2pMessagingPackages = setOf("com.whatsapp", "com.whatsapp.w4b")
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val packageName = sbn.packageName
         if (packageName !in watchedPackages) return
@@ -46,7 +50,8 @@ class TransactionNotificationListenerService : NotificationListenerService() {
         val text = extras.getCharSequence("android.text")?.toString().orEmpty()
         if (title.isBlank() && text.isBlank()) return
 
-        val parsed = NotificationParser.parse(title, text) ?: return
+        val parsed = NotificationParser.parse(title, text, isP2PMessagingApp = packageName in p2pMessagingPackages)
+            ?: return
 
         scope.launch {
             val app = applicationContext as LifeTrackerApp
